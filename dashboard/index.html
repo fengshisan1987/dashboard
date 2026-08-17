@@ -1197,9 +1197,215 @@
             background: #fff7e6 !important;
             color: #fa8c16 !important;
         }
-    </style>
+    
+    /* 登录页面样式 */
+    .login-page {
+        display: none;
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: linear-gradient(135deg, #1a73e8 0%, #0d47a1 100%);
+        justify-content: center;
+        align-items: center;
+        z-index: 9999;
+    }
+    
+    .login-page.active {
+        display: flex;
+    }
+    
+    .login-box {
+        background: white;
+        padding: 40px;
+        border-radius: 12px;
+        box-shadow: 0 8px 32px rgba(0,0,0,0.2);
+        width: 100%;
+        max-width: 400px;
+    }
+    
+    .login-box h2 {
+        text-align: center;
+        margin-bottom: 24px;
+        color: #1a73e8;
+    }
+    
+    .login-form .form-group {
+        margin-bottom: 20px;
+    }
+    
+    .login-form label {
+        display: block;
+        margin-bottom: 8px;
+        color: #666;
+        font-size: 14px;
+    }
+    
+    .login-form input {
+        width: 100%;
+        padding: 12px;
+        border: 1px solid #d9d9d9;
+        border-radius: 6px;
+        font-size: 14px;
+        transition: all 0.3s;
+    }
+    
+    .login-form input:focus {
+        border-color: #1a73e8;
+        outline: none;
+    }
+    
+    .login-btn {
+        width: 100%;
+        padding: 12px;
+        background: #1a73e8;
+        color: white;
+        border: none;
+        border-radius: 6px;
+        font-size: 16px;
+        cursor: pointer;
+        transition: all 0.3s;
+    }
+    
+    .login-btn:hover {
+        background: #1557b0;
+    }
+    
+    .login-error {
+        color: #f44336;
+        font-size: 14px;
+        margin-top: 12px;
+        text-align: center;
+        display: none;
+    }
+    
+    .user-info {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        margin-left: auto;
+    }
+    
+    .user-info span {
+        color: white;
+        font-size: 14px;
+    }
+    
+    .logout-btn {
+        padding: 6px 16px;
+        background: rgba(255,255,255,0.2);
+        color: white;
+        border: 1px solid rgba(255,255,255,0.3);
+        border-radius: 4px;
+        cursor: pointer;
+        font-size: 14px;
+        transition: all 0.3s;
+    }
+    
+    .logout-btn:hover {
+        background: rgba(255,255,255,0.3);
+    }
+    
+    /* 账号管理页面样式 */
+    .account-management {
+        background: white;
+        border-radius: 12px;
+        padding: 24px;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+    }
+    
+    .account-form {
+        display: flex;
+        gap: 12px;
+        margin-bottom: 24px;
+        flex-wrap: wrap;
+    }
+    
+    .account-form input, .account-form select {
+        padding: 10px;
+        border: 1px solid #d9d9d9;
+        border-radius: 6px;
+        font-size: 14px;
+    }
+    
+    .account-form button {
+        padding: 10px 20px;
+        background: #1a73e8;
+        color: white;
+        border: none;
+        border-radius: 6px;
+        cursor: pointer;
+    }
+    
+    .account-list {
+        width: 100%;
+        border-collapse: collapse;
+    }
+    
+    .account-list th, .account-list td {
+        padding: 12px;
+        text-align: left;
+        border-bottom: 1px solid #e8e8e8;
+    }
+    
+    .account-list th {
+        background: #f5f7fa;
+        font-weight: 600;
+    }
+    
+    .delete-btn {
+        padding: 6px 12px;
+        background: #f44336;
+        color: white;
+        border: none;
+        border-radius: 4px;
+        cursor: pointer;
+        font-size: 12px;
+    }
+    
+    /* 日志页面样式 */
+    .log-table {
+        width: 100%;
+        border-collapse: collapse;
+        background: white;
+        border-radius: 12px;
+        overflow: hidden;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+    }
+    
+    .log-table th, .log-table td {
+        padding: 12px;
+        text-align: left;
+        border-bottom: 1px solid #e8e8e8;
+    }
+    
+    .log-table th {
+        background: #f5f7fa;
+        font-weight: 600;
+    }
+</style>
 </head>
 <body>
+<!-- 登录页面 -->
+<div class="login-page" id="loginPage">
+    <div class="login-box">
+        <h2>招商端数据看板</h2>
+        <form class="login-form" id="loginForm">
+            <div class="form-group">
+                <label>用户名</label>
+                <input type="text" id="loginUsername" placeholder="请输入用户名" required>
+            </div>
+            <div class="form-group">
+                <label>密码</label>
+                <input type="password" id="loginPassword" placeholder="请输入密码" required>
+            </div>
+            <button type="submit" class="login-btn">登录</button>
+            <div class="login-error" id="loginError"></div>
+        </form>
+    </div>
+</div>
+
     <div class="header">
         <h1>招商端数据看板</h1>
     </div>
@@ -1778,9 +1984,17 @@
         ];
 
         // 初始化
-        function init() {
+        async function init() {
             console.log('init start');
-            loadData();
+            
+            // 先检查登录状态
+            const isLoggedIn = await checkLogin();
+            if (!isLoggedIn) {
+                console.log('未登录，等待用户登录');
+                return;
+            }
+            
+            await loadData();
             console.log('loaded data:', allData.length);
             
             // 清理数据中的 null/undefined 值
@@ -6181,5 +6395,54 @@
         // 页面加载完成后初始化
         document.addEventListener('DOMContentLoaded', init);
     </script>
+
+<!-- 账号管理页面 -->
+<div class="page" id="accountsPage">
+    <div class="container">
+        <div class="account-management">
+            <h2 style="margin-bottom: 20px;">账号管理</h2>
+            <div class="account-form">
+                <input type="text" id="newAccountName" placeholder="用户名" style="flex: 1;">
+                <input type="password" id="newAccountPassword" placeholder="密码" style="flex: 1;">
+                <select id="newAccountRole" style="width: 120px;">
+                    <option value="user">普通用户</option>
+                    <option value="superadmin">超级管理员</option>
+                </select>
+                <button onclick="addNewAccount()">添加账号</button>
+            </div>
+            <table class="account-list">
+                <thead>
+                    <tr>
+                        <th>用户名</th>
+                        <th>角色</th>
+                        <th>创建时间</th>
+                        <th>操作</th>
+                    </tr>
+                </thead>
+                <tbody id="accountListBody">
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- 操作日志页面 -->
+<div class="page" id="logsPage">
+    <div class="container">
+        <h2 style="margin-bottom: 20px;">操作日志</h2>
+        <table class="log-table">
+            <thead>
+                <tr>
+                    <th>时间</th>
+                    <th>用户</th>
+                    <th>操作</th>
+                    <th>详情</th>
+                </tr>
+            </thead>
+            <tbody id="logListBody">
+            </tbody>
+        </table>
+    </div>
+</div>
 </body>
 </html>

@@ -3,7 +3,7 @@ const cors = require('cors');
 const bodyParser = require('body-parser');
 const fs = require('fs');
 const path = require('path');
-const { exec } = require('child_process');
+const crypto = require('crypto');
 
 const app = express();
 app.use(cors());
@@ -14,7 +14,12 @@ const DATA_DIR = path.join(__dirname, 'data');
 const CLUE_DATA_FILE = path.join(DATA_DIR, 'clue_data.json');
 const COST_DATA_FILE = path.join(DATA_DIR, 'cost_data.json');
 const AUTH_FILE = path.join(DATA_DIR, 'auth.json');
+const LOG_FILE = path.join(DATA_DIR, 'operation_logs.json');
 const BACKUP_DIR = path.join(__dirname, 'backups');
+
+// JWT密钥（实际生产环境应该使用环境变量）
+const JWT_SECRET = 'dashboard-secret-key-2024';
+const TOKEN_EXPIRE_HOURS = 24; // 登录有效期24小时
 
 // 确保目录存在
 if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
@@ -41,6 +46,12 @@ function initClueDataFile() {
 function initCostDataFile() {
     if (!fs.existsSync(COST_DATA_FILE)) {
         fs.writeFileSync(COST_DATA_FILE, JSON.stringify({ data: {}, accounts: [], lastUpdate: null }, null, 2));
+    }
+}
+
+function initLogFile() {
+    if (!fs.existsSync(LOG_FILE)) {
+        fs.writeFileSync(LOG_FILE, JSON.stringify({ logs: [] }, null, 2));
     }
 }
 
@@ -84,6 +95,98 @@ function saveCostData(data) {
     fs.writeFileSync(COST_DATA_FILE, JSON.stringify(data, null, 2));
 }
 
+function readLogs() {
+    try {
+        initLogFile();
+        return JSON.parse(fs.readFileSync(LOG_FILE, 'utf8'));
+    } catch (e) {
+        return { logs: [] };
+    }
+}
+
+function saveLogs(data) {
+    fs.writeFileSync(LOG_FILE, JSON.stringify(data, null, 2));
+}
+
+// ========== JWT 简单实现 ==========
+function generateToken(username, role) {
+    const header = Buffer.from(JSON.stringify({ alg: 'HS256', typ: 'JWT' })).toString('base64url');
+    const now = Math.floor(Date.now() / 1000);
+    const payload = Buffer.from(JSON.stringify({
+        username,
+        role,
+        iat: now,
+        exp: now + TOKEN_EXPIRE_HOURS * 3600
+    })).toString('base64url');
+    const signature = crypto.createHmac('sha256', JWT_SECRET)
+        .update(`${header}.${payload}`)
+        .digest('base64url');
+    return `${header}.${payload}.${signature}`;
+}
+
+function verifyToken(token) {
+    try {
+        const [header, payload, signature] = token.split('.');
+        const expectedSignature = crypto.createHmac('sha256', JWT_SECRET)
+            .update(`${header}.${payload}`)
+            .digest('base64url');
+        if (signature !== expectedSignature) return null;
+        
+        const data = JSON.parse(Buffer.from(payload, 'base64url').toString());
+        const now = Math.floor(Date.now() / 1000);
+        if (data.exp < now) return null; // 令牌过期
+        return data;
+    } catch (e) {
+        return null;
+    }
+}
+
+// ========== 认证中间件 ==========
+function authenticateToken(req, res, next) {
+    const authHeader = req.headers['authorization'];
+    const token = authHeader && authHeader.split(' ')[1];
+    
+    if (!token) {
+        return res.status(401).json({ success: false, message: '未提供认证令牌' });
+    }
+    
+    const user = verifyToken(token);
+    if (!user) {
+        return res.status(403).json({ success: false, message: '令牌无效或已过期' });
+    }
+    
+    req.user = user;
+    next();
+}
+
+function requireSuperAdmin(req, res, next) {
+    if (req.user.role !== 'superadmin') {
+        return res.status(403).json({ success: false, message: '需要超级管理员权限' });
+    }
+    next();
+}
+
+// ========== 操作日志 ==========
+function addLog(username, action, details = '') {
+    try {
+        const logs = readLogs();
+        logs.logs.unshift({
+            time: new Date().toISOString(),
+            username,
+            action,
+            details,
+            ip: '' // 可以添加IP地址
+        });
+        // 只保留最近1000条日志
+        if (logs.logs.length > 1000) {
+            logs.logs = logs.logs.slice(0, 1000);
+        }
+        saveLogs(logs);
+    } catch (e) {
+        console.error('记录日志失败:', e);
+    }
+}
+
 // ========== 备份功能 ==========
 function createBackup() {
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
@@ -93,7 +196,6 @@ function createBackup() {
         fs.mkdirSync(backupPath, { recursive: true });
     }
     
-    // 复制数据文件
     if (fs.existsSync(CLUE_DATA_FILE)) {
         fs.copyFileSync(CLUE_DATA_FILE, path.join(backupPath, 'clue_data.json'));
     }
@@ -108,7 +210,6 @@ function createBackup() {
     return backupPath;
 }
 
-// 清理旧备份（保留最近4周）
 function cleanupOldBackups() {
     const backups = fs.readdirSync(BACKUP_DIR)
         .filter(name => name.startsWith('backup_'))
@@ -119,7 +220,6 @@ function cleanupOldBackups() {
         }))
         .sort((a, b) => b.time - a.time);
     
-    // 保留最近4个备份
     const toDelete = backups.slice(4);
     toDelete.forEach(backup => {
         fs.rmSync(backup.path, { recursive: true, force: true });
@@ -127,7 +227,6 @@ function cleanupOldBackups() {
     });
 }
 
-// 每周日执行备份
 function scheduleWeeklyBackup() {
     const now = new Date();
     const nextSunday = new Date(now);
@@ -143,7 +242,6 @@ function scheduleWeeklyBackup() {
     setTimeout(() => {
         createBackup();
         cleanupOldBackups();
-        // 设置每周循环
         setInterval(() => {
             createBackup();
             cleanupOldBackups();
@@ -163,8 +261,11 @@ app.post('/api/auth/login', (req, res) => {
     const account = authData.accounts.find(a => a.username === username && a.password === password);
     
     if (account) {
+        const token = generateToken(account.username, account.role);
+        addLog(username, '登录', '用户登录成功');
         res.json({ 
             success: true, 
+            token,
             user: {
                 username: account.username,
                 role: account.role
@@ -175,8 +276,13 @@ app.post('/api/auth/login', (req, res) => {
     }
 });
 
-// 获取所有账号
-app.get('/api/auth/accounts', (req, res) => {
+// 获取当前用户信息
+app.get('/api/auth/me', authenticateToken, (req, res) => {
+    res.json({ success: true, user: req.user });
+});
+
+// 获取所有账号（仅超级管理员）
+app.get('/api/auth/accounts', authenticateToken, requireSuperAdmin, (req, res) => {
     const authData = readAuthData();
     const accounts = authData.accounts.map(a => ({
         username: a.username,
@@ -186,8 +292,8 @@ app.get('/api/auth/accounts', (req, res) => {
     res.json({ success: true, accounts });
 });
 
-// 添加账号
-app.post('/api/auth/accounts', (req, res) => {
+// 添加账号（仅超级管理员）
+app.post('/api/auth/accounts', authenticateToken, requireSuperAdmin, (req, res) => {
     const { username, password, role } = req.body;
     
     if (!username || !password || !role) {
@@ -208,11 +314,12 @@ app.post('/api/auth/accounts', (req, res) => {
     });
     
     saveAuthData(authData);
+    addLog(req.user.username, '创建账号', `创建用户: ${username}, 角色: ${role}`);
     res.json({ success: true, message: '账号创建成功' });
 });
 
-// 删除账号
-app.delete('/api/auth/accounts/:username', (req, res) => {
+// 删除账号（仅超级管理员）
+app.delete('/api/auth/accounts/:username', authenticateToken, requireSuperAdmin, (req, res) => {
     const { username } = req.params;
     
     if (username === 'admin') {
@@ -228,13 +335,19 @@ app.delete('/api/auth/accounts/:username', (req, res) => {
     
     authData.accounts.splice(index, 1);
     saveAuthData(authData);
+    addLog(req.user.username, '删除账号', `删除用户: ${username}`);
     res.json({ success: true, message: '账号删除成功' });
 });
 
-// 修改密码
-app.put('/api/auth/accounts/:username/password', (req, res) => {
+// 修改密码（任何登录用户都可以修改自己的密码，超级管理员可以修改任何密码）
+app.put('/api/auth/accounts/:username/password', authenticateToken, (req, res) => {
     const { username } = req.params;
     const { newPassword } = req.body;
+    
+    // 普通用户只能修改自己的密码
+    if (req.user.role !== 'superadmin' && req.user.username !== username) {
+        return res.status(403).json({ success: false, message: '只能修改自己的密码' });
+    }
     
     if (!newPassword) {
         return res.status(400).json({ success: false, message: '新密码不能为空' });
@@ -249,59 +362,63 @@ app.put('/api/auth/accounts/:username/password', (req, res) => {
     
     account.password = newPassword;
     saveAuthData(authData);
+    addLog(req.user.username, '修改密码', `修改用户: ${username} 的密码`);
     res.json({ success: true, message: '密码修改成功' });
 });
 
 // ========== 线索数据 API ==========
 
-// 获取线索数据
-app.get('/api/clue/data', (req, res) => {
+// 获取线索数据（任何登录用户）
+app.get('/api/clue/data', authenticateToken, (req, res) => {
     res.json(readClueData());
 });
 
-// 保存线索数据
-app.post('/api/clue/data', (req, res) => {
+// 保存线索数据（仅超级管理员）
+app.post('/api/clue/data', authenticateToken, requireSuperAdmin, (req, res) => {
     const data = {
         data: req.body.data || [],
         lastUpdate: new Date().toISOString()
     };
     saveClueData(data);
+    addLog(req.user.username, '保存线索数据', `保存了 ${data.data.length} 条线索数据`);
     res.json({ success: true, message: '数据保存成功' });
 });
 
 // ========== 消耗数据 API ==========
 
-// 获取消耗数据
-app.get('/api/cost/data', (req, res) => {
+// 获取消耗数据（任何登录用户）
+app.get('/api/cost/data', authenticateToken, (req, res) => {
     res.json(readCostData());
 });
 
-// 保存消耗数据
-app.post('/api/cost/data', (req, res) => {
+// 保存消耗数据（仅超级管理员）
+app.post('/api/cost/data', authenticateToken, requireSuperAdmin, (req, res) => {
     const data = {
         data: req.body.data || {},
         accounts: req.body.accounts || [],
         lastUpdate: new Date().toISOString()
     };
     saveCostData(data);
+    addLog(req.user.username, '保存消耗数据', `保存了消耗数据`);
     res.json({ success: true, message: '消耗数据保存成功' });
 });
 
 // ========== 备份 API ==========
 
-// 手动触发备份
-app.post('/api/backup', (req, res) => {
+// 手动触发备份（仅超级管理员）
+app.post('/api/backup', authenticateToken, requireSuperAdmin, (req, res) => {
     try {
         const backupPath = createBackup();
         cleanupOldBackups();
+        addLog(req.user.username, '手动备份', `备份路径: ${backupPath}`);
         res.json({ success: true, message: '备份完成', path: backupPath });
     } catch (e) {
         res.status(500).json({ success: false, message: '备份失败: ' + e.message });
     }
 });
 
-// 获取备份列表
-app.get('/api/backups', (req, res) => {
+// 获取备份列表（仅超级管理员）
+app.get('/api/backups', authenticateToken, requireSuperAdmin, (req, res) => {
     try {
         const backups = fs.readdirSync(BACKUP_DIR)
             .filter(name => name.startsWith('backup_'))
@@ -317,8 +434,8 @@ app.get('/api/backups', (req, res) => {
     }
 });
 
-// 恢复备份
-app.post('/api/backup/restore', (req, res) => {
+// 恢复备份（仅超级管理员）
+app.post('/api/backup/restore', authenticateToken, requireSuperAdmin, (req, res) => {
     const { backupName } = req.body;
     const backupPath = path.join(BACKUP_DIR, backupName);
     
@@ -327,10 +444,8 @@ app.post('/api/backup/restore', (req, res) => {
     }
     
     try {
-        // 先创建当前备份
         createBackup();
         
-        // 恢复数据
         if (fs.existsSync(path.join(backupPath, 'clue_data.json'))) {
             fs.copyFileSync(path.join(backupPath, 'clue_data.json'), CLUE_DATA_FILE);
         }
@@ -338,9 +453,22 @@ app.post('/api/backup/restore', (req, res) => {
             fs.copyFileSync(path.join(backupPath, 'cost_data.json'), COST_DATA_FILE);
         }
         
+        addLog(req.user.username, '恢复备份', `恢复备份: ${backupName}`);
         res.json({ success: true, message: '数据恢复成功' });
     } catch (e) {
         res.status(500).json({ success: false, message: '恢复失败: ' + e.message });
+    }
+});
+
+// ========== 操作日志 API ==========
+
+// 获取操作日志（仅超级管理员）
+app.get('/api/logs', authenticateToken, requireSuperAdmin, (req, res) => {
+    try {
+        const logs = readLogs();
+        res.json({ success: true, logs: logs.logs });
+    } catch (e) {
+        res.status(500).json({ success: false, message: '获取日志失败' });
     }
 });
 
@@ -369,10 +497,10 @@ function startServer(port) {
         console.log(`服务器运行在端口: ${port}`);
         console.log(`数据目录: ${DATA_DIR}`);
         console.log(`备份目录: ${BACKUP_DIR}`);
+        console.log(`登录有效期: ${TOKEN_EXPIRE_HOURS}小时`);
         console.log(`API地址: http://localhost:${port}/api`);
         console.log(`========================================`);
         
-        // 启动每周备份
         scheduleWeeklyBackup();
     });
 

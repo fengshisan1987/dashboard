@@ -10,12 +10,24 @@ class DashboardAPI {
     setToken(token) {
         this.token = token;
         localStorage.setItem('dashboard_token', token);
+        // 记录登录时间，用于检查过期
+        localStorage.setItem('dashboard_login_time', Date.now().toString());
     }
 
     // 获取认证token
     getToken() {
         if (!this.token) {
             this.token = localStorage.getItem('dashboard_token');
+        }
+        // 检查是否过期（24小时）
+        const loginTime = localStorage.getItem('dashboard_login_time');
+        if (loginTime) {
+            const elapsed = Date.now() - parseInt(loginTime);
+            if (elapsed > 24 * 3600 * 1000) {
+                // 超过24小时，清除登录状态
+                this.clearAuth();
+                return null;
+            }
         }
         return this.token;
     }
@@ -25,6 +37,25 @@ class DashboardAPI {
         this.token = null;
         localStorage.removeItem('dashboard_token');
         localStorage.removeItem('dashboard_user');
+        localStorage.removeItem('dashboard_login_time');
+    }
+
+    // 检查是否已登录
+    isLoggedIn() {
+        return !!this.getToken();
+    }
+
+    // 获取当前用户角色
+    getUserRole() {
+        const user = localStorage.getItem('dashboard_user');
+        if (user) {
+            try {
+                return JSON.parse(user).role;
+            } catch (e) {
+                return null;
+            }
+        }
+        return null;
     }
 
     // 通用请求方法
@@ -45,7 +76,7 @@ class DashboardAPI {
                 headers
             });
 
-            if (response.status === 401) {
+            if (response.status === 401 || response.status === 403) {
                 this.clearAuth();
                 window.location.reload();
                 return null;
@@ -67,11 +98,15 @@ class DashboardAPI {
         });
         
         if (result && result.success) {
-            this.setToken(result.user.username); // 简单token，实际应用应使用JWT
+            this.setToken(result.token);
             localStorage.setItem('dashboard_user', JSON.stringify(result.user));
         }
         
         return result;
+    }
+
+    async getCurrentUser() {
+        return this.request('/api/auth/me');
     }
 
     async getAccounts() {
@@ -141,6 +176,12 @@ class DashboardAPI {
             method: 'POST',
             body: JSON.stringify({ backupName })
         });
+    }
+
+    // ========== 操作日志 ==========
+    
+    async getLogs() {
+        return this.request('/api/logs');
     }
 
     // ========== 健康检查 ==========
