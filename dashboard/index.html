@@ -5618,6 +5618,103 @@
             }
         }
 
+        // ========== 账号管理功能 ==========
+        async function loadAccounts() {
+            try {
+                const result = await dashboardAPI.getAccounts();
+                if (result && result.success) {
+                    renderAccountList(result.accounts);
+                }
+            } catch (e) {
+                console.error('加载账号列表失败:', e);
+            }
+        }
+        
+        function renderAccountList(accounts) {
+            const tbody = document.getElementById('accountListBody');
+            if (!tbody) return;
+            
+            tbody.innerHTML = accounts.map(account => `
+                <tr>
+                    <td>${account.username}</td>
+                    <td>${account.role === 'superadmin' ? '超级管理员' : '普通用户'}</td>
+                    <td>${new Date(account.createdAt).toLocaleString()}</td>
+                    <td>
+                        ${account.role !== 'superadmin' ? 
+                            `<button class="btn btn-danger btn-sm" onclick="deleteAccount('${account.username}')">删除</button>` : 
+                            '<span style="color: #999;">不可删除</span>'}
+                    </td>
+                </tr>
+            `).join('');
+        }
+        
+        async function addAccount() {
+            const username = document.getElementById('newUsername').value;
+            const password = document.getElementById('newPassword').value;
+            const role = document.getElementById('newRole').value;
+            
+            if (!username || !password) {
+                alert('请输入用户名和密码');
+                return;
+            }
+            
+            try {
+                const result = await dashboardAPI.addAccount(username, password, role);
+                if (result && result.success) {
+                    alert('账号创建成功');
+                    document.getElementById('newUsername').value = '';
+                    document.getElementById('newPassword').value = '';
+                    loadAccounts();
+                } else {
+                    alert(result.message || '创建失败');
+                }
+            } catch (e) {
+                alert('创建失败: ' + e.message);
+            }
+        }
+        
+        async function deleteAccount(username) {
+            if (!confirm('确定要删除账号 ' + username + ' 吗？')) return;
+            
+            try {
+                const result = await dashboardAPI.deleteAccount(username);
+                if (result && result.success) {
+                    alert('账号删除成功');
+                    loadAccounts();
+                } else {
+                    alert(result.message || '删除失败');
+                }
+            } catch (e) {
+                alert('删除失败: ' + e.message);
+            }
+        }
+        
+        // ========== 操作日志功能 ==========
+        async function loadLogs() {
+            try {
+                const result = await dashboardAPI.getLogs();
+                if (result && result.success) {
+                    renderLogs(result.logs);
+                }
+            } catch (e) {
+                console.error('加载日志失败:', e);
+            }
+        }
+        
+        function renderLogs(logs) {
+            const tbody = document.getElementById('logListBody');
+            if (!tbody) return;
+            
+            tbody.innerHTML = logs.map(log => `
+                <tr>
+                    <td>${new Date(log.time).toLocaleString()}</td>
+                    <td>${log.username}</td>
+                    <td>${log.action}</td>
+                    <td>${log.details}</td>
+                </tr>
+            `).join('');
+        }
+
         // 绑定事件
         function bindEvents() {
             // 导航切换
@@ -5633,6 +5730,10 @@
                     if (this.dataset.page === 'detail') {
                         renderTableHeader();
                         refreshTable();
+                    } else if (this.dataset.page === 'accounts') {
+                        loadAccounts();
+                    } else if (this.dataset.page === 'logs') {
+                        loadLogs();
                     }
                 });
             });
