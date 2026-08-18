@@ -1405,16 +1405,21 @@
         </form>
     </div>
 </div>
-
-    <div class="header">
-        <h1>招商端数据看板</h1>
+<div class="header" style="display: flex; align-items: center; justify-content: space-between;">
+    <h1>招商端数据看板</h1>
+    <div class="user-info" id="userInfo" style="display: none;">
+        <span id="userName"></span>
+        <button class="logout-btn" onclick="logout()">退出登录</button>
     </div>
+</div>
 
-    <div class="nav">
-        <div class="nav-item active" data-page="clue">数据线索看板</div>
-        <div class="nav-item" data-page="detail">数据明细</div>
-        <div class="nav-item" data-page="cost">账号消耗</div>
-    </div>
+<div class="nav">
+    <div class="nav-item active" data-page="clue">数据线索看板</div>
+    <div class="nav-item" data-page="detail">数据明细</div>
+    <div class="nav-item" data-page="cost">账号消耗</div>
+    <div class="nav-item" data-page="accounts" id="navAccounts" style="display: none;">账号管理</div>
+    <div class="nav-item" data-page="logs" id="navLogs" style="display: none;">操作日志</div>
+</div>
 
     <!-- 数据线索看板页面 -->
     <div class="page active" id="page-clue">
@@ -1988,6 +1993,197 @@
             console.log('init start');
             
             // 先检查登录状态
+        // 登录表单提交
+        document.getElementById('loginForm').addEventListener('submit', async function(e) {
+            e.preventDefault();
+            const username = document.getElementById('loginUsername').value;
+            const password = document.getElementById('loginPassword').value;
+            const errorDiv = document.getElementById('loginError');
+            
+            try {
+                const result = await dashboardAPI.login(username, password);
+                if (result && result.success) {
+                    currentUser = result.user;
+                    hideLoginPage();
+                    updateUIForRole();
+                    // 重新加载数据
+                    await loadData();
+                    updateUI();
+                    errorDiv.style.display = 'none';
+                } else {
+                    errorDiv.textContent = result.message || '登录失败';
+                    errorDiv.style.display = 'block';
+                }
+            } catch (e) {
+                errorDiv.textContent = '登录失败: ' + e.message;
+                errorDiv.style.display = 'block';
+            }
+        });
+        // ========== 登录和权限管理 ==========
+        let currentUser = null;
+        
+        // 检查登录状态
+        async function checkLogin() {
+            const token = dashboardAPI.getToken();
+            if (!token) {
+                showLoginPage();
+                return false;
+            }
+            
+            try {
+                const result = await dashboardAPI.getCurrentUser();
+                if (result && result.success) {
+                    currentUser = result.user;
+                    updateUIForRole();
+                    return true;
+                } else {
+                    showLoginPage();
+                    return false;
+                }
+            } catch (e) {
+                showLoginPage();
+                return false;
+            }
+        }
+        
+        // 显示登录页面
+        function showLoginPage() {
+            document.getElementById('loginPage').classList.add('active');
+            document.getElementById('userInfo').style.display = 'none';
+        }
+        
+        // 隐藏登录页面
+        function hideLoginPage() {
+            document.getElementById('loginPage').classList.remove('active');
+        }
+        
+        // 更新UI根据角色
+        function updateUIForRole() {
+            if (!currentUser) return;
+            
+            // 显示用户信息
+            document.getElementById('userName').textContent = currentUser.username + (currentUser.role === 'superadmin' ? ' (管理员)' : '');
+            document.getElementById('userInfo').style.display = 'flex';
+            
+            // 超级管理员显示额外功能
+            if (currentUser.role === 'superadmin') {
+                document.getElementById('navAccounts').style.display = 'block';
+                document.getElementById('navLogs').style.display = 'block';
+            } else {
+                document.getElementById('navAccounts').style.display = 'none';
+                document.getElementById('navLogs').style.display = 'none';
+            }
+            
+            // 控制导入导出按钮显示
+            const importBtns = document.querySelectorAll('.upload-section button, #importCostBtn, #exportCostBtn');
+            importBtns.forEach(btn => {
+                if (currentUser.role !== 'superadmin') {
+                    btn.style.display = 'none';
+                }
+            });
+        }
+        
+        // 退出登录
+        function logout() {
+            dashboardAPI.clearAuth();
+            currentUser = null;
+            showLoginPage();
+            // 清除页面数据
+            allData = [];
+            costData = {};
+            updateUI();
+        }
+        
+        // ========== 账号管理功能 ==========
+        async function loadAccounts() {
+            try {
+                const result = await dashboardAPI.getAccounts();
+                if (result && result.success) {
+                    renderAccountList(result.accounts);
+                }
+            } catch (e) {
+                console.error('加载账号列表失败:', e);
+            }
+        }
+        
+        function renderAccountList(accounts) {
+            const tbody = document.getElementById('accountListBody');
+            tbody.innerHTML = accounts.map(acc => `
+                <tr>
+                    <td>${acc.username}</td>
+                    <td>${acc.role === 'superadmin' ? '超级管理员' : '普通用户'}</td>
+                    <td>${new Date(acc.createdAt).toLocaleString()}</td>
+                    <td>
+                        ${acc.username !== 'admin' ? `<button class="delete-btn" onclick="deleteAccount('${acc.username}')">删除</button>` : '-'}
+                    </td>
+                </tr>
+            `).join('');
+        }
+        
+        async function addNewAccount() {
+            const username = document.getElementById('newAccountName').value;
+            const password = document.getElementById('newAccountPassword').value;
+            const role = document.getElementById('newAccountRole').value;
+            
+            if (!username || !password) {
+                showToast('请填写用户名和密码', 'error');
+                return;
+            }
+            
+            try {
+                const result = await dashboardAPI.addAccount(username, password, role);
+                if (result && result.success) {
+                    showToast('账号创建成功', 'success');
+                    document.getElementById('newAccountName').value = '';
+                    document.getElementById('newAccountPassword').value = '';
+                    loadAccounts();
+                } else {
+                    showToast(result.message || '创建失败', 'error');
+                }
+            } catch (e) {
+                showToast('创建失败: ' + e.message, 'error');
+            }
+        }
+        
+        async function deleteAccount(username) {
+            if (!confirm(`确定删除账号 "${username}" 吗？`)) return;
+            
+            try {
+                const result = await dashboardAPI.deleteAccount(username);
+                if (result && result.success) {
+                    showToast('账号删除成功', 'success');
+                    loadAccounts();
+                } else {
+                    showToast(result.message || '删除失败', 'error');
+                }
+            } catch (e) {
+                showToast('删除失败: ' + e.message, 'error');
+            }
+        }
+        
+        // ========== 操作日志功能 ==========
+        async function loadLogs() {
+            try {
+                const result = await dashboardAPI.getLogs();
+                if (result && result.success) {
+                    renderLogs(result.logs);
+                }
+            } catch (e) {
+                console.error('加载日志失败:', e);
+            }
+        }
+        
+        function renderLogs(logs) {
+            const tbody = document.getElementById('logListBody');
+            tbody.innerHTML = logs.map(log => `
+                <tr>
+                    <td>${new Date(log.time).toLocaleString()}</td>
+                    <td>${log.username}</td>
+                    <td>${log.action}</td>
+                    <td>${log.details}</td>
+                </tr>
+            `).join('');
+        }
             const isLoggedIn = await checkLogin();
             if (!isLoggedIn) {
                 console.log('未登录，等待用户登录');
@@ -6397,7 +6593,7 @@
     </script>
 
 <!-- 账号管理页面 -->
-<div class="page" id="accountsPage">
+<div class="page" id="page-accounts">
     <div class="container">
         <div class="account-management">
             <h2 style="margin-bottom: 20px;">账号管理</h2>
@@ -6427,7 +6623,7 @@
 </div>
 
 <!-- 操作日志页面 -->
-<div class="page" id="logsPage">
+<div class="page" id="page-logs">
     <div class="container">
         <h2 style="margin-bottom: 20px;">操作日志</h2>
         <table class="log-table">
