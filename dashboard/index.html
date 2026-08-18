@@ -1409,7 +1409,7 @@
     <h1>招商端数据看板</h1>
     <div class="user-info" id="userInfo" style="display: none;">
         <span id="userName"></span>
-        <button class="logout-btn" onclick="logout()">退出登录</button>
+        <button class="logout-btn" id="logoutBtn">退出登录</button>
     </div>
 </div>
 
@@ -2023,6 +2023,17 @@
                     errorDiv.textContent = '登录失败: ' + e.message;
                     errorDiv.style.display = 'block';
                 }
+            });
+            
+            // 设置退出登录按钮事件
+            document.getElementById("logoutBtn").addEventListener("click", function() {
+                dashboardAPI.clearAuth();
+                currentUser = null;
+                showLoginPage();
+                // 清除页面数据
+                allData = [];
+                costData = {};
+                updateUI();
             });
         }
         
