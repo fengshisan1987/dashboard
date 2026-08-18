@@ -5650,9 +5650,9 @@
         }
         
         async function addAccount() {
-            const username = document.getElementById('newUsername').value;
-            const password = document.getElementById('newPassword').value;
-            const role = document.getElementById('newRole').value;
+            const username = document.getElementById('newAccountName').value;
+            const password = document.getElementById('newAccountPassword').value;
+            const role = document.getElementById('newAccountRole').value;
             
             if (!username || !password) {
                 alert('请输入用户名和密码');
@@ -5663,8 +5663,8 @@
                 const result = await dashboardAPI.addAccount(username, password, role);
                 if (result && result.success) {
                     alert('账号创建成功');
-                    document.getElementById('newUsername').value = '';
-                    document.getElementById('newPassword').value = '';
+                    document.getElementById('newAccountName').value = '';
+                    document.getElementById('newAccountPassword').value = '';
                     loadAccounts();
                 } else {
                     alert(result.message || '创建失败');
@@ -6615,7 +6615,7 @@
                     <option value="user">普通用户</option>
                     <option value="superadmin">超级管理员</option>
                 </select>
-                <button onclick="addNewAccount()">添加账号</button>
+                <button onclick="addAccount()">添加账号</button>
             </div>
             <table class="account-list">
                 <thead>
