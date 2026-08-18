@@ -1993,32 +1993,39 @@
             console.log('init start');
             
             // 先检查登录状态
-        // 登录表单提交
-        document.getElementById('loginForm').addEventListener('submit', async function(e) {
-            e.preventDefault();
-            const username = document.getElementById('loginUsername').value;
-            const password = document.getElementById('loginPassword').value;
-            const errorDiv = document.getElementById('loginError');
+            const isLoggedIn = await checkLogin();
+            if (!isLoggedIn) {
+                showLoginPage();
+            }
             
-            try {
-                const result = await dashboardAPI.login(username, password);
-                if (result && result.success) {
-                    currentUser = result.user;
-                    hideLoginPage();
-                    updateUIForRole();
-                    // 重新加载数据
-                    await loadData();
-                    updateUI();
-                    errorDiv.style.display = 'none';
-                } else {
-                    errorDiv.textContent = result.message || '登录失败';
+            // 设置登录表单事件
+            document.getElementById('loginForm').addEventListener('submit', async function(e) {
+                e.preventDefault();
+                const username = document.getElementById('loginUsername').value;
+                const password = document.getElementById('loginPassword').value;
+                const errorDiv = document.getElementById('loginError');
+                
+                try {
+                    const result = await dashboardAPI.login(username, password);
+                    if (result && result.success) {
+                        currentUser = result.user;
+                        hideLoginPage();
+                        updateUIForRole();
+                        // 重新加载数据
+                        await loadData();
+                        updateUI();
+                        errorDiv.style.display = 'none';
+                    } else {
+                        errorDiv.textContent = result.message || '登录失败';
+                        errorDiv.style.display = 'block';
+                    }
+                } catch (e) {
+                    errorDiv.textContent = '登录失败: ' + e.message;
                     errorDiv.style.display = 'block';
                 }
-            } catch (e) {
-                errorDiv.textContent = '登录失败: ' + e.message;
-                errorDiv.style.display = 'block';
-            }
-        });
+            });
+        }
+        
         // ========== 登录和权限管理 ==========
         let currentUser = null;
         
