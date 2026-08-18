@@ -2056,6 +2056,9 @@
         async function init() {
             console.log('init start');
             
+            // 绑定事件（包括导航切换）
+            bindEvents();
+            
             // 先检查登录状态
             const isLoggedIn = await checkLogin();
             if (!isLoggedIn) {
@@ -2160,7 +2163,6 @@
             }, 100);
             
             initTable();
-            bindEvents();
             console.log('init complete');
         }
 
@@ -5622,12 +5624,19 @@
         // ========== 账号管理功能 ==========
         async function loadAccounts() {
             try {
+                console.log('开始加载账号列表...');
                 const result = await dashboardAPI.getAccounts();
+                console.log('账号列表API响应:', result);
                 if (result && result.success) {
+                    console.log('账号数量:', result.accounts ? result.accounts.length : 0);
                     renderAccountList(result.accounts);
+                } else {
+                    console.error('获取账号列表失败:', result ? result.message : '未知错误');
+                    alert('获取账号列表失败: ' + (result ? result.message : '未知错误'));
                 }
             } catch (e) {
                 console.error('加载账号列表失败:', e);
+                alert('加载账号列表失败: ' + e.message);
             }
         }
         
