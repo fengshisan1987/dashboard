@@ -36,7 +36,9 @@ jobs:
             echo "✅ 数据已备份"
           fi
           
-          # 拉取最新代码
+          # 拉取最新代码（先重置本地修改，避免冲突）
+          git reset --hard HEAD
+          git clean -fd
           git pull origin main || git pull origin master
           
           # 安装依赖
