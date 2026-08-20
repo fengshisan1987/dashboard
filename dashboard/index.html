@@ -2076,9 +2076,8 @@
                             currentUser = result.user;
                             hideLoginPage();
                             updateUIForRole();
-                            // 重新加载数据
-                            await loadData();
-                            updateUI();
+                            // 重新加载数据并初始化所有功能
+                            await initApp();
                             errorDiv.style.display = 'none';
                         } else {
                             errorDiv.textContent = result.message || '登录失败';
@@ -2117,6 +2116,12 @@
                 return clean;
             });
             
+            await initApp();
+            console.log('init complete');
+        }
+        
+        // 初始化应用功能（数据和UI）
+        async function initApp() {
             // 初始化账号筛选
             initAccountFilter();
             
@@ -2134,10 +2139,6 @@
             initIntentFilter();
             initIntentAreaFilter();
             
-            // 初始化费用消耗图表筛选
-            // 注意：必须在 initCostModule() 之后调用，因为 initCostAccountFilter 依赖 costAccounts 数据
-            // initCostAccountFilter();  // 移到 initCostModule 之后
-            
             // 初始化平均单价图表筛选
             initPriceAccountFilter();
             initPriceIntentFilter();
@@ -2149,8 +2150,8 @@
             // 初始化卡片筛选功能
             initChartFilter();
             
-            // 初始化账号消耗
-            initCostModule();
+            // 初始化账号消耗（异步，等待数据加载完成）
+            await initCostModuleAsync();
             
             // 费用消耗筛选依赖 costAccounts，在 initCostModule 后初始化
             initCostAccountFilter();
@@ -2163,7 +2164,6 @@
             }, 100);
             
             initTable();
-            console.log('init complete');
         }
 
         // 从服务器加载数据
@@ -6141,6 +6141,16 @@
 
         // ========== 账号消耗模块 ==========
         
+        // 初始化账号消耗模块（异步版本）
+        async function initCostModuleAsync() {
+            loadCostAccounts();
+            await loadCostData();
+            renderCostAccountList();
+            renderCostCalendar();
+            bindCostEvents();
+        }
+        
+        // 保留同步版本用于兼容
         function initCostModule() {
             loadCostAccounts();
             loadCostData();
