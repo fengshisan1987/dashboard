@@ -6144,7 +6144,7 @@
         function initCostModule() {
             loadCostAccounts();
             loadCostData();
-            renderAccountList();
+            renderCostAccountList();
             renderCostCalendar();
             bindCostEvents();
         }
@@ -6200,7 +6200,7 @@
             }
         }
         
-        function renderAccountList() {
+        function renderCostAccountList() {
             const container = document.getElementById('accountList');
             if (!container) return;
             
@@ -6221,7 +6221,7 @@
             }
             costAccounts.push(name);
             saveCostAccounts();
-            renderAccountList();
+            renderCostAccountList();
             renderCostCalendar();
             // 更新费用消耗图表的账号筛选列表
             initCostAccountFilter();
@@ -6248,7 +6248,7 @@
             }
             saveCostAccounts();
             saveCostData();
-            renderAccountList();
+            renderCostAccountList();
             renderCostCalendar();
             // 更新费用消耗图表的账号筛选列表
             initCostAccountFilter();
@@ -6563,7 +6563,7 @@
                     
                     saveCostAccounts();
                     saveCostData();
-                    renderAccountList();
+                    renderCostAccountList();
                     renderCostCalendar();
                     initCostAccountFilter();
                     updateCostChart();
